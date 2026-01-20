@@ -62,14 +62,14 @@ Your task:
    - Organization/company names
    - Monetary amounts (with currency if visible)
    - Reference numbers, IDs, or codes
-4. Write a clear 3-6 sentence summary explaining what this document is and its key points
+4. Write a comprehensive and detailed summary (at least 6-12 sentences) explaining exactly what this document is, its primary purpose, and a thorough breakdown of its key points and any significant details found.
 5. Assess confidence level based on text clarity: high, medium, or low
 
 Return ONLY valid JSON (no markdown, no code blocks):
 {
   "documentType": "invoice",
   "extractedText": "Full text content here...",
-  "summary": "This is an invoice from Company X to Client Y for services rendered in December 2024. The total amount is $1,234.56. Payment is due by January 15, 2025.",
+  "summary": "This document is a formal invoice issued by Company X to Client Y for professional services rendered throughout the month of December 2024. It details a total amount due of $1,234.56, which covers several specific line items including software development and consulting. The invoice includes crucial payment information, specifying that the full balance must be settled by January 15, 2025. Additionally, it references a specific purchase order number, PO-9876, and outlines the late payment policy. The document is signed by the finance department of Company X and includes their contact details for any billing inquiries. It serves as both a request for payment and a record of services provided during the final quarter of the fiscal year.",
   "detectedFields": {
     "dates": ["2024-12-31", "2025-01-15"],
     "names": ["John Doe", "Jane Smith"],
