@@ -2,10 +2,13 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import sharp from 'sharp';
 import fs from 'fs';
 
-const LOG_PATH = '/app/server_debug.log';
+const LOG_PATH = './logs/analysis.log';
 function log(msg: string) {
     console.log(`[DOCUMENT_ANALYSIS] ${msg}`);
-    try { fs.appendFileSync(LOG_PATH, `[DOCUMENT_ANALYSIS] ${new Date().toISOString()} ${msg}\n`); } catch (e) { }
+    try {
+        if (!fs.existsSync('./logs')) fs.mkdirSync('./logs', { recursive: true });
+        fs.appendFileSync(LOG_PATH, `[DOCUMENT_ANALYSIS] ${new Date().toISOString()} ${msg}\n`);
+    } catch (e) { }
 }
 
 export interface DocumentAnalysisResult {
@@ -84,11 +87,10 @@ Return ONLY valid JSON (no markdown, no code blocks):
     // Try models in order of preference (same as voucher imports)
     // Try models in order of preference (optimized for speed and cost)
     const modelsToTry = [
-        "gemini-2.5-flash-lite",
-        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-exp",
         "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-pro"
+        "gemini-1.5-pro"
     ];
 
     for (const modelName of modelsToTry) {
@@ -106,11 +108,14 @@ Return ONLY valid JSON (no markdown, no code blocks):
                     }
                 });
 
+                log(`Sending request to ${modelName} (Timeout: 120s)...`);
+
                 let inlineData: { mimeType: string; data: string };
 
                 // Handle different file types
                 if (mimeType === 'application/pdf') {
                     // Send PDF directly
+                    log(`Encoding PDF (${(fileBuffer.length / 1024 / 1024).toFixed(2)}MB)...`);
                     inlineData = {
                         mimeType: 'application/pdf',
                         data: fileBuffer.toString('base64')
@@ -137,7 +142,7 @@ Return ONLY valid JSON (no markdown, no code blocks):
                 const result = await model.generateContent([
                     { inlineData },
                     prompt
-                ]);
+                ], { timeout: 210000 }); // 3.5 minutes timeout for large files
 
                 const text = result.response.text();
                 log(`Raw Response (${modelName}): ${text.substring(0, 200)}...`);

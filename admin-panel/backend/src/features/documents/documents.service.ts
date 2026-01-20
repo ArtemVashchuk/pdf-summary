@@ -3,19 +3,27 @@ import { analyzeDocument } from "./analysis/document_analysis";
 import fs from "fs";
 import path from "path";
 
-const LOG_PATH = '/app/document_service_debug.log';
+const LOG_PATH = path.join(process.cwd(), 'logs', 'document_service.log');
 function log(msg: string) {
     const logMsg = `[DOC_SERVICE] ${new Date().toISOString()} ${msg}`;
     console.log(logMsg);
-    try { fs.appendFileSync(LOG_PATH, logMsg + '\n'); } catch (e) { }
+    try {
+        if (!fs.existsSync(path.join(process.cwd(), 'logs'))) fs.mkdirSync(path.join(process.cwd(), 'logs'), { recursive: true });
+        fs.appendFileSync(LOG_PATH, logMsg + '\n');
+    } catch (e) { }
 }
 
 export class DocumentProcessingService {
     private static instance: DocumentProcessingService;
     private isProcessing: boolean = false;
     private jobQueue: { documentId: string; filePath: string; mimeType: string }[] = [];
+    private readonly MAX_ATTEMPTS = 3;
+    private readonly RECOVERY_INTERVAL = 30000; // 30 seconds
 
-    private constructor() { }
+    private constructor() {
+        // Start background recovery service
+        this.startRecoveryService();
+    }
 
     public static getInstance(): DocumentProcessingService {
         if (!DocumentProcessingService.instance) {
@@ -24,7 +32,30 @@ export class DocumentProcessingService {
         return DocumentProcessingService.instance;
     }
 
+    private startRecoveryService() {
+        log("Starting background recovery service...");
+        setInterval(async () => {
+            try {
+                const pending = await documentsRepository.getPendingDocuments(this.MAX_ATTEMPTS);
+                for (const doc of pending) {
+                    // Only queue if not already in queue
+                    if (!this.jobQueue.some(job => job.documentId === doc.id)) {
+                        log(`Recovering stuck/pending document: ${doc.id} (${doc.fileName})`);
+                        // Guess mimeType from fileType extension if possible, or use a default
+                        const mimeType = doc.fileType === 'pdf' ? 'application/pdf' : `image/${doc.fileType}`;
+                        this.queueDocument(doc.id, doc.filePath, mimeType);
+                    }
+                }
+            } catch (err) {
+                log(`Recovery service error: ${err}`);
+            }
+        }, this.RECOVERY_INTERVAL);
+    }
+
     public async queueDocument(documentId: string, filePath: string, mimeType: string) {
+        // Prevent duplicate queueing
+        if (this.jobQueue.some(job => job.documentId === documentId)) return;
+
         log(`Queueing document ${documentId} for processing`);
         this.jobQueue.push({ documentId, filePath, mimeType });
         this.processQueue();
@@ -41,13 +72,28 @@ export class DocumentProcessingService {
                 await this.processDocument(job.documentId, job.filePath, job.mimeType);
             } catch (error: any) {
                 log(`Critical failure processing document ${job.documentId}: ${error.message}`);
-                await documentsRepository.updateDocument(job.documentId, {
-                    processingStatus: "failed",
-                    errorMessage: error.message
-                });
+
+                // Get current attempt count
+                const doc = await documentsRepository.getDocumentById(job.documentId);
+                const currentAttempts = doc?.attempts || 0;
+
+                if (currentAttempts < this.MAX_ATTEMPTS) {
+                    log(`Retrying document ${job.documentId} later (attempt ${currentAttempts + 1}/${this.MAX_ATTEMPTS})`);
+                    await documentsRepository.updateDocument(job.documentId, {
+                        processingStatus: "pending",
+                        errorMessage: `Attempt ${currentAttempts + 1} failed: ${error.message}`
+                    });
+                } else {
+                    log(`Document ${job.documentId} exceeded max attempts. Marking as failed.`);
+                    await documentsRepository.updateDocument(job.documentId, {
+                        processingStatus: "failed",
+                        errorMessage: `Exceeded ${this.MAX_ATTEMPTS} attempts. Last error: ${error.message}`
+                    });
+                }
             } finally {
                 this.isProcessing = false;
-                setTimeout(() => this.processQueue(), 100);
+                // Add a small delay between processing to avoid overwhelming system
+                setTimeout(() => this.processQueue(), 1000);
             }
         }
     }
@@ -56,10 +102,15 @@ export class DocumentProcessingService {
         log(`Processing document ${documentId}`);
 
         try {
-            // Update status to processing
+            // Increment attempts and set to processing
+            await documentsRepository.incrementAttempts(documentId);
             await documentsRepository.updateDocument(documentId, {
                 processingStatus: "processing"
             });
+
+            if (!fs.existsSync(filePath)) {
+                throw new Error(`File not found at ${filePath}`);
+            }
 
             // Read file
             const fileBuffer = fs.readFileSync(filePath);
@@ -76,13 +127,14 @@ export class DocumentProcessingService {
                 summary: analysis.summary,
                 extractedText: analysis.extractedText,
                 detectedFields: analysis.detectedFields,
-                confidence: analysis.confidence
+                confidence: analysis.confidence,
+                errorMessage: null // Clear any previous error messages on success
             });
 
             log(`Document ${documentId} processed successfully`);
 
         } catch (error: any) {
-            log(`Error processing document ${documentId}: ${error.message}`);
+            log(`Error in processDocument for ${documentId}: ${error.message}`);
             throw error;
         }
     }
@@ -119,7 +171,7 @@ export class DocumentProcessingService {
         }
 
         // Save file to uploads directory
-        const uploadsDir = '/app/uploads/documents';
+        const uploadsDir = path.join(process.cwd(), 'uploads', 'documents');
         if (!fs.existsSync(uploadsDir)) {
             fs.mkdirSync(uploadsDir, { recursive: true });
         }
@@ -139,7 +191,8 @@ export class DocumentProcessingService {
             fileSize: file.size,
             filePath,
             processingStatus: "pending",
-            uploadedBy
+            uploadedBy,
+            attempts: 0
         });
 
         log(`Document record created: ${document.id}`);

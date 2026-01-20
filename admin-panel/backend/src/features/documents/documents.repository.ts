@@ -62,6 +62,23 @@ export class DocumentsRepository {
         await db.delete(documents).where(eq(documents.id, id));
     }
 
+    async incrementAttempts(id: string): Promise<void> {
+        await db.update(documents)
+            .set({ attempts: sql`${documents.attempts} + 1`, updatedAt: new Date() })
+            .where(eq(documents.id, id));
+    }
+
+    async getPendingDocuments(maxAttempts: number = 3): Promise<Document[]> {
+        return await db.select()
+            .from(documents)
+            .where(
+                and(
+                    sql`${documents.processingStatus} IN ('pending', 'processing')`,
+                    sql`${documents.attempts} < ${maxAttempts}`
+                )
+            );
+    }
+
     async getDocumentStats(): Promise<{
         total: number;
         byType: Record<string, number>;

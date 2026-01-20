@@ -21,6 +21,7 @@ export const documents = pgTable("documents", {
   confidence: text("confidence"), // high, medium, low
   processingStatus: text("processing_status").notNull().default("pending"), // pending, processing, completed, failed
   errorMessage: text("error_message"),
+  attempts: integer("attempts").notNull().default(0),
 
   uploadedBy: text("uploaded_by"), // admin user ID or 'admin'
   createdAt: timestamp("created_at").defaultNow().notNull(),
