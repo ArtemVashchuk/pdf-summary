@@ -22,7 +22,7 @@ router.post("/upload", upload.array("files", 10), async (req, res) => {
             return res.status(400).json({ error: "No files provided" });
         }
 
-        const uploadedBy = (req.session as any)?.userId || "admin";
+        const uploadedBy = req.session.userId || "admin";
         const documentIds: string[] = [];
 
         for (const file of files) {
