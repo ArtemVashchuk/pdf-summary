@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2, FileUp, FileText, ChevronLeft, ChevronRight, Eye, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { apiRequest } from "@/lib/utils";
+import { apiRequest, cn } from "@/lib/utils";
 import { Layout } from "@/components/layout";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -255,64 +255,71 @@ export default function AdminScreen() {
 
       {/* Document Details Modal */}
       <Dialog open={!!selectedDocument} onOpenChange={(open) => !open && setSelectedDocument(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto w-[95vw] border-gray-800 p-0 flex flex-col items-stretch">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto w-[95vw] border-white/10 p-0 flex flex-col items-stretch">
           {selectedDocument && (
             <>
-              <DialogHeader className="p-6 border-b border-gray-800 sticky top-0 bg-gray-900/95 backdrop-blur z-20 shrink-0">
-                <div className="flex justify-between items-start w-full pr-8">
+              <DialogHeader className="p-8 border-b border-white/10 sticky top-0 bg-gray-950/90 backdrop-blur-xl z-20 shrink-0">
+                <div className="flex justify-between items-start w-full pr-10">
                   <div className="overflow-hidden">
-                    <DialogTitle className="text-xl font-bold text-white mb-1 truncate">{selectedDocument.fileName}</DialogTitle>
-                    <p className="text-xs text-gray-500 font-mono truncate">{selectedDocument.id}</p>
+                    <DialogTitle className="text-2xl font-bold text-white mb-2 truncate">{selectedDocument.fileName}</DialogTitle>
+                    <p className="text-xs text-gray-500 font-mono truncate opacity-60">{selectedDocument.id}</p>
                   </div>
                 </div>
               </DialogHeader>
 
-              <div className="flex-1 p-6 space-y-6 overflow-x-hidden">
+              <div className="flex-1 p-8 space-y-8 overflow-x-hidden bg-gray-950/20">
                 {/* STATUS BANNER */}
-                <div className={`p-4 rounded-lg flex items-center gap-3 ${selectedDocument.processingStatus === 'completed' ? 'bg-green-500/10 border border-green-500/20 text-green-400' :
-                  selectedDocument.processingStatus === 'failed' ? 'bg-red-500/10 border border-red-500/20 text-red-400' :
-                    'bg-yellow-500/10 border border-yellow-500/20 text-yellow-400'
+                <div className={`p-4 rounded-xl flex items-center gap-4 border transition-all duration-300 ${selectedDocument.processingStatus === 'completed' ? 'bg-green-500/5 border-green-500/20 text-green-400' :
+                  selectedDocument.processingStatus === 'failed' ? 'bg-red-500/5 border-red-500/20 text-red-400' :
+                    'bg-yellow-500/5 border-yellow-500/20 text-yellow-400'
                   }`}>
-                  {selectedDocument.processingStatus === 'completed' ? <CheckCircle className="w-5 h-5 flex-shrink-0" /> :
-                    selectedDocument.processingStatus === 'failed' ? <AlertCircle className="w-5 h-5 flex-shrink-0" /> :
-                      <Loader2 className="w-5 h-5 animate-spin flex-shrink-0" />}
-                  <span className="font-bold uppercase tracking-wider text-sm">{t(`status.${selectedDocument.processingStatus}`)}</span>
+                  <div className={cn(
+                    "w-10 h-10 rounded-full flex items-center justify-center",
+                    selectedDocument.processingStatus === 'completed' ? 'bg-green-500/10' :
+                      selectedDocument.processingStatus === 'failed' ? 'bg-red-500/10' :
+                        'bg-yellow-500/10'
+                  )}>
+                    {selectedDocument.processingStatus === 'completed' ? <CheckCircle className="w-5 h-5" /> :
+                      selectedDocument.processingStatus === 'failed' ? <AlertCircle className="w-5 h-5" /> :
+                        <Loader2 className="w-5 h-5 animate-spin" />}
+                  </div>
+                  <span className="font-bold uppercase tracking-widest text-sm">{t(`status.${selectedDocument.processingStatus}`)}</span>
                 </div>
 
                 {/* SUMMARY SECTION */}
-                <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700/50 w-full overflow-hidden">
-                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">{t('details.summary')}</h3>
-                  <p className="leading-relaxed text-gray-200 whitespace-pre-wrap break-words w-full">
+                <div className="bg-white/[0.02] rounded-2xl p-6 border border-white/[0.05] w-full overflow-hidden shadow-inner">
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4 opacity-70">{t('details.summary')}</h3>
+                  <p className="leading-relaxed text-gray-300 whitespace-pre-wrap break-words w-full text-base">
                     {selectedDocument.summary || "No summary available."}
                   </p>
                 </div>
 
                 {/* DETAILS GRID */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
-                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">{t('table.col.type')}</span>
-                    <span className="text-lg font-mono text-white capitalize">{selectedDocument.documentType}</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-white/[0.02] p-6 rounded-2xl border border-white/[0.05] group hover:bg-white/[0.04] transition-colors">
+                    <span className="text-xs font-bold text-gray-500 uppercase block mb-2 opacity-70">{t('table.col.type')}</span>
+                    <span className="text-lg font-semibold text-white capitalize">{selectedDocument.documentType}</span>
                   </div>
-                  <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
-                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">{t('table.col.status')}</span>
-                    <span className="text-lg font-mono text-white capitalize">{t(`status.${selectedDocument.processingStatus}`)}</span>
+                  <div className="bg-white/[0.02] p-6 rounded-2xl border border-white/[0.05] group hover:bg-white/[0.04] transition-colors">
+                    <span className="text-xs font-bold text-gray-500 uppercase block mb-2 opacity-70">{t('table.col.status')}</span>
+                    <span className="text-lg font-semibold text-white capitalize">{t(`status.${selectedDocument.processingStatus}`)}</span>
                   </div>
-                  <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
-                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">{t('details.dates')}</span>
+                  <div className="bg-white/[0.02] p-6 rounded-2xl border border-white/[0.05] group hover:bg-white/[0.04] transition-colors">
+                    <span className="text-xs font-bold text-gray-500 uppercase block mb-3 opacity-70">{t('details.dates')}</span>
                     <div className="flex flex-wrap gap-2 mt-1">
                       {selectedDocument.detectedFields?.dates?.length > 0 ? (
                         selectedDocument.detectedFields.dates.map((date, i) => (
-                          <span key={i} className="px-2 py-1 bg-gray-700 rounded text-xs text-gray-300 font-mono">{date}</span>
+                          <span key={i} className="px-3 py-1 bg-white/5 rounded-lg text-xs text-gray-300 font-mono border border-white/5">{date}</span>
                         ))
                       ) : <span className="text-gray-500 italic">-</span>}
                     </div>
                   </div>
-                  <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
-                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">{t('details.amounts')}</span>
+                  <div className="bg-white/[0.02] p-6 rounded-2xl border border-white/[0.05] group hover:bg-white/[0.04] transition-colors">
+                    <span className="text-xs font-bold text-gray-500 uppercase block mb-3 opacity-70">{t('details.amounts')}</span>
                     <div className="flex flex-wrap gap-2 mt-1">
                       {selectedDocument.detectedFields?.amounts?.length > 0 ? (
                         selectedDocument.detectedFields.amounts.map((amt, i) => (
-                          <span key={i} className="px-2 py-1 bg-emerald-900/50 text-emerald-400 rounded text-xs font-mono">{amt}</span>
+                          <span key={i} className="px-3 py-1 bg-primary/10 text-primary rounded-lg text-xs font-mono border border-primary/10">{amt}</span>
                         ))
                       ) : <span className="text-gray-500 italic">-</span>}
                     </div>
@@ -321,15 +328,15 @@ export default function AdminScreen() {
 
                 {/* RAW DATA */}
                 <div className="mt-8">
-                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">{t('details.raw')}</h3>
-                  <pre className="bg-black/50 p-4 rounded-lg text-xs font-mono text-gray-500 overflow-x-auto border border-gray-800 max-w-full">
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4 opacity-70">{t('details.raw')}</h3>
+                  <pre className="bg-black/40 p-6 rounded-2xl text-xs font-mono text-gray-400 overflow-x-auto border border-white/5 max-w-full shadow-inner">
                     {JSON.stringify(selectedDocument, null, 2)}
                   </pre>
                 </div>
               </div>
 
-              <div className="p-6 border-t border-gray-800 bg-gray-900/95 sticky bottom-0 z-20 shrink-0 flex justify-end">
-                <Button onClick={() => setSelectedDocument(null)}>{t('details.close')}</Button>
+              <div className="p-8 border-t border-white/10 bg-gray-950/90 backdrop-blur-xl sticky bottom-0 z-20 shrink-0 flex justify-end">
+                <Button onClick={() => setSelectedDocument(null)} className="px-8 font-bold">{t('details.close')}</Button>
               </div>
             </>
           )}
