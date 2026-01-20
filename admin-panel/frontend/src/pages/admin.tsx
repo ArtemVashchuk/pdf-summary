@@ -255,36 +255,36 @@ export default function AdminScreen() {
 
       {/* Document Details Modal */}
       <Dialog open={!!selectedDocument} onOpenChange={(open) => !open && setSelectedDocument(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 border-gray-800">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto w-[95vw] border-gray-800 p-0 flex flex-col items-stretch">
           {selectedDocument && (
             <>
-              <DialogHeader className="p-6 border-b border-gray-800 sticky top-0 bg-gray-900/95 backdrop-blur z-10 flex-row justify-between items-start space-y-0 text-left">
-                <div>
-                  <DialogTitle className="text-xl font-bold text-white mb-1">{selectedDocument.fileName}</DialogTitle>
-                  <p className="text-xs text-gray-500 font-mono">{selectedDocument.id}</p>
+              <DialogHeader className="p-6 border-b border-gray-800 sticky top-0 bg-gray-900/95 backdrop-blur z-20 shrink-0">
+                <div className="flex justify-between items-start w-full pr-8">
+                  <div className="overflow-hidden">
+                    <DialogTitle className="text-xl font-bold text-white mb-1 truncate">{selectedDocument.fileName}</DialogTitle>
+                    <p className="text-xs text-gray-500 font-mono truncate">{selectedDocument.id}</p>
+                  </div>
                 </div>
               </DialogHeader>
 
-              <div className="p-6 space-y-6">
+              <div className="flex-1 p-6 space-y-6 overflow-x-hidden">
                 {/* STATUS BANNER */}
                 <div className={`p-4 rounded-lg flex items-center gap-3 ${selectedDocument.processingStatus === 'completed' ? 'bg-green-500/10 border border-green-500/20 text-green-400' :
                   selectedDocument.processingStatus === 'failed' ? 'bg-red-500/10 border border-red-500/20 text-red-400' :
                     'bg-yellow-500/10 border border-yellow-500/20 text-yellow-400'
                   }`}>
-                  {selectedDocument.processingStatus === 'completed' ? <CheckCircle className="w-5 h-5" /> :
-                    selectedDocument.processingStatus === 'failed' ? <AlertCircle className="w-5 h-5" /> :
-                      <Loader2 className="w-5 h-5 animate-spin" />}
+                  {selectedDocument.processingStatus === 'completed' ? <CheckCircle className="w-5 h-5 flex-shrink-0" /> :
+                    selectedDocument.processingStatus === 'failed' ? <AlertCircle className="w-5 h-5 flex-shrink-0" /> :
+                      <Loader2 className="w-5 h-5 animate-spin flex-shrink-0" />}
                   <span className="font-bold uppercase tracking-wider text-sm">{t(`status.${selectedDocument.processingStatus}`)}</span>
                 </div>
 
                 {/* SUMMARY SECTION */}
-                <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700/50 overflow-hidden">
+                <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700/50 w-full overflow-hidden">
                   <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">{t('details.summary')}</h3>
-                  <div className="w-full">
-                    <p className="leading-relaxed text-gray-200 whitespace-pre-wrap break-words">
-                      {selectedDocument.summary || "No summary available."}
-                    </p>
-                  </div>
+                  <p className="leading-relaxed text-gray-200 whitespace-pre-wrap break-words w-full">
+                    {selectedDocument.summary || "No summary available."}
+                  </p>
                 </div>
 
                 {/* DETAILS GRID */}
@@ -322,13 +322,13 @@ export default function AdminScreen() {
                 {/* RAW DATA */}
                 <div className="mt-8">
                   <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">{t('details.raw')}</h3>
-                  <pre className="bg-black/50 p-4 rounded-lg text-xs font-mono text-gray-500 overflow-x-auto border border-gray-800">
+                  <pre className="bg-black/50 p-4 rounded-lg text-xs font-mono text-gray-500 overflow-x-auto border border-gray-800 max-w-full">
                     {JSON.stringify(selectedDocument, null, 2)}
                   </pre>
                 </div>
               </div>
 
-              <div className="p-6 border-t border-gray-800 bg-gray-900/95 flex justify-end">
+              <div className="p-6 border-t border-gray-800 bg-gray-900/95 sticky bottom-0 z-20 shrink-0 flex justify-end">
                 <Button onClick={() => setSelectedDocument(null)}>{t('details.close')}</Button>
               </div>
             </>
