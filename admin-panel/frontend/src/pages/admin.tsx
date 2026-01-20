@@ -278,10 +278,10 @@ export default function AdminScreen() {
                 </div>
 
                 {/* SUMMARY SECTION */}
-                <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700/50">
+                <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700/50 overflow-hidden">
                   <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">{t('details.summary')}</h3>
-                  <div className="prose prose-invert max-w-none">
-                    <p className="leading-relaxed text-gray-200 whitespace-pre-wrap">
+                  <div className="w-full">
+                    <p className="leading-relaxed text-gray-200 whitespace-pre-wrap break-words">
                       {selectedDocument.summary || "No summary available."}
                     </p>
                   </div>
