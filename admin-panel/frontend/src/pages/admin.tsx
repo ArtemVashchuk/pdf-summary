@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2, FileUp, FileText, ChevronLeft, ChevronRight, Eye, Loader2, X, CheckCircle, AlertCircle } from "lucide-react";
+import { Trash2, FileUp, FileText, ChevronLeft, ChevronRight, Eye, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/utils";
 import { Layout } from "@/components/layout";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export interface DocumentType {
   id: string;
@@ -33,6 +35,11 @@ export default function AdminScreen() {
   const limit = 50;
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
   const [selectedDocument, setSelectedDocument] = useState<DocumentType | null>(null);
+
+  // Confirmation states
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+  const [isSingleDeleteOpen, setIsSingleDeleteOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
 
   // Fetch Documents
   const { data: documentsData, isLoading } = useQuery<{ total: number; data: DocumentType[] }>({
@@ -66,7 +73,6 @@ export default function AdminScreen() {
   return (
     <Layout activeTab="documents" onTabChange={() => { }}>
       <div className="space-y-6">
-
         {/* Upload Section */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
           <h2 className="text-xl font-bold mb-4">Upload Documents</h2>
@@ -119,19 +125,7 @@ export default function AdminScreen() {
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={async () => {
-                  if (confirm(`Delete ${selectedDocumentIds.size} documents?`)) {
-                    try {
-                      await apiRequest('POST', '/api/documents/bulk-delete', { ids: Array.from(selectedDocumentIds) });
-                      setSelectedDocumentIds(new Set());
-                      queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
-                      toast.success(`${selectedDocumentIds.size} documents deleted`);
-                    } catch (e) {
-                      console.error(e);
-                      toast.error("Failed to delete documents");
-                    }
-                  }
-                }}
+                onClick={() => setIsBulkDeleteOpen(true)}
               >
                 Delete Selected ({selectedDocumentIds.size})
               </Button>
@@ -225,17 +219,9 @@ export default function AdminScreen() {
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={async () => {
-                            if (confirm('Delete this document?')) {
-                              try {
-                                await apiRequest('DELETE', `/api/documents/${doc.id}`);
-                                queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
-                                toast.success("Document deleted");
-                              } catch (e) {
-                                console.error(e);
-                                toast.error("Failed to delete document");
-                              }
-                            }
+                          onClick={() => {
+                            setDocumentToDelete(doc.id);
+                            setIsSingleDeleteOpen(true);
                           }}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -263,92 +249,134 @@ export default function AdminScreen() {
             </div>
           </div>
         </div>
-
       </div>
 
       {/* Document Details Modal */}
-      {selectedDocument && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 animate-in fade-in duration-200">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl">
-            <div className="p-6 border-b border-gray-800 flex justify-between items-start sticky top-0 bg-gray-900/95 backdrop-blur z-10">
-              <div>
-                <h2 className="text-xl font-bold text-white mb-1">{selectedDocument.fileName}</h2>
-                <p className="text-xs text-gray-500 font-mono">{selectedDocument.id}</p>
-              </div>
-              <button onClick={() => setSelectedDocument(null)} className="text-gray-400 hover:text-white transition-colors">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-6">
-              {/* STATUS BANNER */}
-              <div className={`p-4 rounded-lg flex items-center gap-3 ${selectedDocument.processingStatus === 'completed' ? 'bg-green-500/10 border border-green-500/20 text-green-400' :
-                selectedDocument.processingStatus === 'failed' ? 'bg-red-500/10 border border-red-500/20 text-red-400' :
-                  'bg-yellow-500/10 border border-yellow-500/20 text-yellow-400'
-                }`}>
-                {selectedDocument.processingStatus === 'completed' ? <CheckCircle className="w-5 h-5" /> :
-                  selectedDocument.processingStatus === 'failed' ? <AlertCircle className="w-5 h-5" /> :
-                    <Loader2 className="w-5 h-5 animate-spin" />}
-                <span className="font-bold uppercase tracking-wider text-sm">{selectedDocument.processingStatus}</span>
-              </div>
-
-              {/* SUMMARY SECTION */}
-              <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700/50">
-                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">Document Summary</h3>
-                <div className="prose prose-invert max-w-none">
-                  <p className="leading-relaxed text-gray-200 whitespace-pre-wrap">
-                    {selectedDocument.summary || "No summary available."}
-                  </p>
+      <Dialog open={!!selectedDocument} onOpenChange={(open) => !open && setSelectedDocument(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 border-gray-800">
+          {selectedDocument && (
+            <>
+              <DialogHeader className="p-6 border-b border-gray-800 sticky top-0 bg-gray-900/95 backdrop-blur z-10 flex-row justify-between items-start space-y-0 text-left">
+                <div>
+                  <DialogTitle className="text-xl font-bold text-white mb-1">{selectedDocument.fileName}</DialogTitle>
+                  <p className="text-xs text-gray-500 font-mono">{selectedDocument.id}</p>
                 </div>
-              </div>
+              </DialogHeader>
 
-              {/* DETAILS GRID */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
-                  <span className="text-xs font-bold text-gray-500 uppercase block mb-1">Type</span>
-                  <span className="text-lg font-mono text-white capitalize">{selectedDocument.documentType}</span>
+              <div className="p-6 space-y-6">
+                {/* STATUS BANNER */}
+                <div className={`p-4 rounded-lg flex items-center gap-3 ${selectedDocument.processingStatus === 'completed' ? 'bg-green-500/10 border border-green-500/20 text-green-400' :
+                  selectedDocument.processingStatus === 'failed' ? 'bg-red-500/10 border border-red-500/20 text-red-400' :
+                    'bg-yellow-500/10 border border-yellow-500/20 text-yellow-400'
+                  }`}>
+                  {selectedDocument.processingStatus === 'completed' ? <CheckCircle className="w-5 h-5" /> :
+                    selectedDocument.processingStatus === 'failed' ? <AlertCircle className="w-5 h-5" /> :
+                      <Loader2 className="w-5 h-5 animate-spin" />}
+                  <span className="font-bold uppercase tracking-wider text-sm">{selectedDocument.processingStatus}</span>
                 </div>
-                <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
-                  <span className="text-xs font-bold text-gray-500 uppercase block mb-1">Status</span>
-                  <span className="text-lg font-mono text-white capitalize">{selectedDocument.processingStatus}</span>
-                </div>
-                <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
-                  <span className="text-xs font-bold text-gray-500 uppercase block mb-1">Extracted Dates</span>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {selectedDocument.detectedFields?.dates?.length > 0 ? (
-                      selectedDocument.detectedFields.dates.map((date, i) => (
-                        <span key={i} className="px-2 py-1 bg-gray-700 rounded text-xs text-gray-300 font-mono">{date}</span>
-                      ))
-                    ) : <span className="text-gray-500 italic">-</span>}
+
+                {/* SUMMARY SECTION */}
+                <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700/50">
+                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">Document Summary</h3>
+                  <div className="prose prose-invert max-w-none">
+                    <p className="leading-relaxed text-gray-200 whitespace-pre-wrap">
+                      {selectedDocument.summary || "No summary available."}
+                    </p>
                   </div>
                 </div>
-                <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
-                  <span className="text-xs font-bold text-gray-500 uppercase block mb-1">Extracted Amounts</span>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {selectedDocument.detectedFields?.amounts?.length > 0 ? (
-                      selectedDocument.detectedFields.amounts.map((amt, i) => (
-                        <span key={i} className="px-2 py-1 bg-emerald-900/50 text-emerald-400 rounded text-xs font-mono">{amt}</span>
-                      ))
-                    ) : <span className="text-gray-500 italic">-</span>}
+
+                {/* DETAILS GRID */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
+                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">Type</span>
+                    <span className="text-lg font-mono text-white capitalize">{selectedDocument.documentType}</span>
                   </div>
+                  <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
+                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">Status</span>
+                    <span className="text-lg font-mono text-white capitalize">{selectedDocument.processingStatus}</span>
+                  </div>
+                  <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
+                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">Extracted Dates</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {selectedDocument.detectedFields?.dates?.length > 0 ? (
+                        selectedDocument.detectedFields.dates.map((date, i) => (
+                          <span key={i} className="px-2 py-1 bg-gray-700 rounded text-xs text-gray-300 font-mono">{date}</span>
+                        ))
+                      ) : <span className="text-gray-500 italic">-</span>}
+                    </div>
+                  </div>
+                  <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
+                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">Extracted Amounts</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {selectedDocument.detectedFields?.amounts?.length > 0 ? (
+                        selectedDocument.detectedFields.amounts.map((amt, i) => (
+                          <span key={i} className="px-2 py-1 bg-emerald-900/50 text-emerald-400 rounded text-xs font-mono">{amt}</span>
+                        ))
+                      ) : <span className="text-gray-500 italic">-</span>}
+                    </div>
+                  </div>
+                </div>
+
+                {/* RAW DATA */}
+                <div className="mt-8">
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Raw Extracted Data</h3>
+                  <pre className="bg-black/50 p-4 rounded-lg text-xs font-mono text-gray-500 overflow-x-auto border border-gray-800">
+                    {JSON.stringify(selectedDocument, null, 2)}
+                  </pre>
                 </div>
               </div>
 
-              {/* RAW DATA */}
-              <div className="mt-8">
-                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Raw Extracted Data</h3>
-                <pre className="bg-black/50 p-4 rounded-lg text-xs font-mono text-gray-500 overflow-x-auto border border-gray-800">
-                  {JSON.stringify(selectedDocument, null, 2)}
-                </pre>
+              <div className="p-6 border-t border-gray-800 bg-gray-900/95 flex justify-end">
+                <Button onClick={() => setSelectedDocument(null)}>Close</Button>
               </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
-            </div>
-            <div className="p-6 border-t border-gray-800 bg-gray-900/95 flex justify-end">
-              <Button onClick={() => setSelectedDocument(null)}>Close</Button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Confirmation Dialogs */}
+      <ConfirmDialog
+        isOpen={isBulkDeleteOpen}
+        onClose={() => setIsBulkDeleteOpen(false)}
+        onConfirm={async () => {
+          try {
+            await apiRequest('POST', '/api/documents/bulk-delete', { ids: Array.from(selectedDocumentIds) });
+            setSelectedDocumentIds(new Set());
+            queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
+            toast.success(`${selectedDocumentIds.size} documents deleted`);
+          } catch (e) {
+            console.error(e);
+            toast.error("Failed to delete documents");
+          }
+        }}
+        title="Delete Multiple Documents"
+        description={`Are you sure you want to delete ${selectedDocumentIds.size} documents? This action cannot be undone.`}
+        confirmText="Delete All"
+        isDestructive
+      />
+
+      <ConfirmDialog
+        isOpen={isSingleDeleteOpen}
+        onClose={() => {
+          setIsSingleDeleteOpen(false);
+          setDocumentToDelete(null);
+        }}
+        onConfirm={async () => {
+          if (!documentToDelete) return;
+          try {
+            await apiRequest('DELETE', `/api/documents/${documentToDelete}`);
+            queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
+            toast.success("Document deleted");
+          } catch (e) {
+            console.error(e);
+            toast.error("Failed to delete document");
+          }
+        }}
+        title="Delete Document"
+        description="Are you sure you want to delete this document? This action cannot be undone."
+        confirmText="Delete"
+        isDestructive
+      />
     </Layout>
   );
 }
