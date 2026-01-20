@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  admin-database:
+    image: postgres:16-alpine
+    container_name: pdf-summary-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d pdf_summary_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  admin-backend:
+    build:
+      context: .
+      dockerfile: admin-panel/backend/Dockerfile
+    container_name: pdf-summary-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      PORT: ${PORT}
+      SESSION_SECRET: ${SESSION_SECRET}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    ports:
+      - "5002:4000"
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      admin-database:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  uploads_data:
