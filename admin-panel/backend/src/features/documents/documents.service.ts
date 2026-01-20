@@ -16,6 +16,7 @@ function log(msg: string) {
 export class DocumentProcessingService {
     private static instance: DocumentProcessingService;
     private isProcessing: boolean = false;
+    private currentlyProcessingId: string | null = null;
     private jobQueue: { documentId: string; filePath: string; mimeType: string }[] = [];
     private readonly MAX_ATTEMPTS = 3;
     private readonly RECOVERY_INTERVAL = 30000; // 30 seconds
@@ -38,8 +39,8 @@ export class DocumentProcessingService {
             try {
                 const pending = await documentsRepository.getPendingDocuments(this.MAX_ATTEMPTS);
                 for (const doc of pending) {
-                    // Only queue if not already in queue
-                    if (!this.jobQueue.some(job => job.documentId === doc.id)) {
+                    // Only queue if not already in queue AND not currently being processed
+                    if (!this.jobQueue.some(job => job.documentId === doc.id) && this.currentlyProcessingId !== doc.id) {
                         log(`Recovering stuck/pending document: ${doc.id} (${doc.fileName})`);
                         // Guess mimeType from fileType extension if possible, or use a default
                         const mimeType = doc.fileType === 'pdf' ? 'application/pdf' : `image/${doc.fileType}`;
@@ -54,7 +55,7 @@ export class DocumentProcessingService {
 
     public async queueDocument(documentId: string, filePath: string, mimeType: string) {
         // Prevent duplicate queueing
-        if (this.jobQueue.some(job => job.documentId === documentId)) return;
+        if (this.jobQueue.some(job => job.documentId === documentId) || this.currentlyProcessingId === documentId) return;
 
         log(`Queueing document ${documentId} for processing`);
         this.jobQueue.push({ documentId, filePath, mimeType });
@@ -68,6 +69,7 @@ export class DocumentProcessingService {
         const job = this.jobQueue.shift();
 
         if (job) {
+            this.currentlyProcessingId = job.documentId;
             try {
                 await this.processDocument(job.documentId, job.filePath, job.mimeType);
             } catch (error: any) {
@@ -77,21 +79,25 @@ export class DocumentProcessingService {
                 const doc = await documentsRepository.getDocumentById(job.documentId);
                 const currentAttempts = doc?.attempts || 0;
 
-                if (currentAttempts < this.MAX_ATTEMPTS) {
+                const isFileNotFound = error.code === 'FILE_NOT_FOUND' || error.message?.includes('FileNotFound');
+
+                if (currentAttempts < this.MAX_ATTEMPTS && !isFileNotFound) {
                     log(`Retrying document ${job.documentId} later (attempt ${currentAttempts + 1}/${this.MAX_ATTEMPTS})`);
                     await documentsRepository.updateDocument(job.documentId, {
                         processingStatus: "pending",
                         errorMessage: `Attempt ${currentAttempts + 1} failed: ${error.message}`
                     });
                 } else {
-                    log(`Document ${job.documentId} exceeded max attempts. Marking as failed.`);
+                    const reason = isFileNotFound ? "File missing from server" : `Exceeded ${this.MAX_ATTEMPTS} attempts`;
+                    log(`Document ${job.documentId} failed permanently: ${reason}`);
                     await documentsRepository.updateDocument(job.documentId, {
                         processingStatus: "failed",
-                        errorMessage: `Exceeded ${this.MAX_ATTEMPTS} attempts. Last error: ${error.message}`
+                        errorMessage: `${reason}. Last error: ${error.message}`
                     });
                 }
             } finally {
                 this.isProcessing = false;
+                this.currentlyProcessingId = null;
                 // Add a small delay between processing to avoid overwhelming system
                 setTimeout(() => this.processQueue(), 1000);
             }
@@ -108,12 +114,29 @@ export class DocumentProcessingService {
                 processingStatus: "processing"
             });
 
-            if (!fs.existsSync(filePath)) {
-                throw new Error(`File not found at ${filePath}`);
+            // Normalize path for local vs docker environments
+            let absolutePath = filePath;
+            if (filePath.startsWith('/app/')) {
+                // If it's a Linux/Docker path but we're on Windows/Local, try to resolve it relative to current dir
+                const relativePath = filePath.replace('/app/', '');
+                absolutePath = path.join(process.cwd(), relativePath);
+            }
+
+            if (!fs.existsSync(absolutePath)) {
+                // Try one more fallback: look directly in the uploads/documents folder by filename
+                const fileName = path.basename(filePath);
+                const fallbackPath = path.join(process.cwd(), 'uploads', 'documents', fileName);
+                if (fs.existsSync(fallbackPath)) {
+                    absolutePath = fallbackPath;
+                } else {
+                    const error = new Error(`FileNotFound: ${absolutePath}`);
+                    (error as any).code = 'FILE_NOT_FOUND';
+                    throw error;
+                }
             }
 
             // Read file
-            const fileBuffer = fs.readFileSync(filePath);
+            const fileBuffer = fs.readFileSync(absolutePath);
 
             // Analyze with AI (reuses Gemini pipeline)
             const analysis = await analyzeDocument(fileBuffer, mimeType);

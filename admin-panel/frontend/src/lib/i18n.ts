@@ -134,7 +134,7 @@ export const useI18n = create<I18nStore>()(
             },
         }),
         {
-            name: 'admin-lemberg-language',
+            name: 'pdf-summary-admin-language',
         }
     )
 );
