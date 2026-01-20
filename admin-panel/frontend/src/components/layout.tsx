@@ -14,7 +14,7 @@ const Sidebar = ({ activeTab, onTabChange, className }: SidebarProps) => {
     const { t } = useI18n();
 
     const navItems = [
-        { id: "documents", label: "Documents", icon: FileText },
+        { id: "documents", label: t('nav.documents'), icon: FileText },
     ];
 
     return (
@@ -28,7 +28,7 @@ const Sidebar = ({ activeTab, onTabChange, className }: SidebarProps) => {
 
             <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
                 <div className="px-2 mb-2">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Workspace</span>
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('nav.workspace')}</span>
                 </div>
                 {navItems.map((item) => {
                     const isActive = activeTab === item.id;
@@ -72,6 +72,8 @@ interface LayoutProps {
 }
 
 export const Layout = ({ children, activeTab, onTabChange }: LayoutProps) => {
+    const { t } = useI18n();
+
     return (
         <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
             {/* Desktop Sidebar */}
@@ -82,7 +84,7 @@ export const Layout = ({ children, activeTab, onTabChange }: LayoutProps) => {
                 {/* Header */}
                 <header className="h-16 border-b border-border bg-card/50 flex items-center justify-between px-6 shrink-0 backdrop-blur-sm">
                     <div className="flex items-center gap-4">
-                        <span className="text-sm font-medium text-muted-foreground hidden md:inline-block">/ Dashboard</span>
+                        <span className="text-sm font-medium text-muted-foreground hidden md:inline-block">/ {t('nav.dashboard')}</span>
                         <span className="md:hidden font-bold">PDF Summary</span>
                     </div>
                     <div className="flex items-center gap-4">

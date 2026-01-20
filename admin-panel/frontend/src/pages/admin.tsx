@@ -7,6 +7,7 @@ import { apiRequest } from "@/lib/utils";
 import { Layout } from "@/components/layout";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useI18n } from "@/lib/i18n";
 
 export interface DocumentType {
   id: string;
@@ -31,6 +32,7 @@ export interface DocumentType {
 
 export default function AdminScreen() {
   const queryClient = useQueryClient();
+  const { t } = useI18n();
   const [page, setPage] = useState(1);
   const limit = 50;
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
@@ -75,11 +77,11 @@ export default function AdminScreen() {
       <div className="space-y-6">
         {/* Upload Section */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <h2 className="text-xl font-bold mb-4">Upload Documents</h2>
+          <h2 className="text-xl font-bold mb-4">{t('upload.title')}</h2>
           <div className="border-2 border-dashed border-gray-700 rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
             <FileText className="w-12 h-12 mx-auto mb-4 text-gray-500" />
-            <p className="text-gray-400 mb-2">Drop PDF, JPG, PNG, or WEBP files here</p>
-            <p className="text-sm text-gray-500 mb-4">or click to browse (max 50MB per file)</p>
+            <p className="text-gray-400 mb-2">{t('upload.dropzone')}</p>
+            <p className="text-sm text-gray-500 mb-4">{t('upload.subtitle')}</p>
             <input
               type="file"
               multiple
@@ -98,11 +100,11 @@ export default function AdminScreen() {
                   const data = await res.json();
                   if (data.success) {
                     queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
-                    toast.success("Documents uploaded successfully");
+                    toast.success(t('toast.upload_success'));
                   }
                 } catch (error) {
                   console.error('Upload failed:', error);
-                  toast.error('Upload failed');
+                  toast.error(t('toast.upload_error'));
                 }
                 e.target.value = '';
               }}
@@ -112,7 +114,7 @@ export default function AdminScreen() {
               className="bg-primary text-black hover:bg-primary/80"
             >
               <FileUp className="w-4 h-4 mr-2" />
-              Select Files
+              {t('upload.button')}
             </Button>
           </div>
         </div>
@@ -120,14 +122,14 @@ export default function AdminScreen() {
         {/* Documents Table */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <div className="p-6 border-b border-gray-800 flex justify-between items-center">
-            <h2 className="text-xl font-bold">Uploaded Documents</h2>
+            <h2 className="text-xl font-bold">{t('table.title')}</h2>
             {selectedDocumentIds.size > 0 && (
               <Button
                 variant="destructive"
                 size="sm"
                 onClick={() => setIsBulkDeleteOpen(true)}
               >
-                Delete Selected ({selectedDocumentIds.size})
+                {t('table.delete_selected')} ({selectedDocumentIds.size})
               </Button>
             )}
           </div>
@@ -149,20 +151,20 @@ export default function AdminScreen() {
                       }}
                     />
                   </th>
-                  <th className="text-left p-4">File Name</th>
-                  <th className="text-left p-4">Type</th>
-                  <th className="text-left p-4">Document Type</th>
-                  <th className="text-left p-4">Status</th>
-                  <th className="text-left p-4">Confidence</th>
-                  <th className="text-left p-4">Uploaded</th>
-                  <th className="text-left p-4">Actions</th>
+                  <th className="text-left p-4">{t('table.col.name')}</th>
+                  <th className="text-left p-4">{t('table.col.type')}</th>
+                  <th className="text-left p-4">{t('table.col.doc_type')}</th>
+                  <th className="text-left p-4">{t('table.col.status')}</th>
+                  <th className="text-left p-4">{t('table.col.confidence')}</th>
+                  <th className="text-left p-4">{t('table.col.uploaded')}</th>
+                  <th className="text-left p-4">{t('table.col.actions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {documents.length === 0 ? (
                   <tr className="border-t border-gray-800">
                     <td colSpan={8} className="p-8 text-center text-gray-500">
-                      No documents uploaded yet. Upload your first document above.
+                      {t('table.empty')}
                     </td>
                   </tr>
                 ) : (
@@ -185,7 +187,7 @@ export default function AdminScreen() {
                       <td className="p-4 uppercase text-xs font-mono">{doc.fileType?.split('/')[1] || doc.fileType}</td>
                       <td className="p-4">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${doc.documentType === 'unknown' ? 'bg-gray-800 text-gray-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                          {doc.documentType || 'Pending'}
+                          {doc.documentType || t('status.pending')}
                         </span>
                       </td>
                       <td className="p-4">
@@ -193,7 +195,7 @@ export default function AdminScreen() {
                           doc.processingStatus === 'failed' ? 'bg-red-500/20 text-red-400' :
                             'bg-yellow-500/20 text-yellow-400'
                           }`}>
-                          {doc.processingStatus || 'pending'}
+                          {t(`status.${doc.processingStatus || 'pending'}`)}
                         </span>
                       </td>
                       <td className="p-4">
@@ -201,7 +203,7 @@ export default function AdminScreen() {
                           <span className={`text-xs ${doc.confidence === 'high' ? 'text-green-400' :
                             doc.confidence === 'medium' ? 'text-yellow-400' : 'text-red-400'
                             }`}>
-                            {doc.confidence.toUpperCase()}
+                            {t(`confidence.${doc.confidence}`)}
                           </span>
                         )}
                       </td>
@@ -214,7 +216,7 @@ export default function AdminScreen() {
                           variant="outline"
                           onClick={() => setSelectedDocument(doc)}
                         >
-                          <Eye className="w-4 h-4 mr-2" /> View
+                          <Eye className="w-4 h-4 mr-2" /> {t('action.view')}
                         </Button>
                         <Button
                           size="sm"
@@ -237,14 +239,14 @@ export default function AdminScreen() {
           {/* Pagination */}
           <div className="flex items-center justify-between p-4 border-t border-gray-800 bg-gray-900/50">
             <div className="text-xs text-gray-500">
-              Showing {documents.length} items (Page {page})
+              {t('table.pagination.showing', { count: documents.length, page })}
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="h-8">
-                <ChevronLeft className="w-4 h-4 mr-1" /> Prev
+                <ChevronLeft className="w-4 h-4 mr-1" /> {t('table.pagination.prev')}
               </Button>
               <Button variant="outline" size="sm" disabled={documents.length < limit} onClick={() => setPage(p => p + 1)} className="h-8">
-                Next <ChevronRight className="w-4 h-4 ml-1" />
+                {t('table.pagination.next')} <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             </div>
           </div>
@@ -272,12 +274,12 @@ export default function AdminScreen() {
                   {selectedDocument.processingStatus === 'completed' ? <CheckCircle className="w-5 h-5" /> :
                     selectedDocument.processingStatus === 'failed' ? <AlertCircle className="w-5 h-5" /> :
                       <Loader2 className="w-5 h-5 animate-spin" />}
-                  <span className="font-bold uppercase tracking-wider text-sm">{selectedDocument.processingStatus}</span>
+                  <span className="font-bold uppercase tracking-wider text-sm">{t(`status.${selectedDocument.processingStatus}`)}</span>
                 </div>
 
                 {/* SUMMARY SECTION */}
                 <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700/50">
-                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">Document Summary</h3>
+                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">{t('details.summary')}</h3>
                   <div className="prose prose-invert max-w-none">
                     <p className="leading-relaxed text-gray-200 whitespace-pre-wrap">
                       {selectedDocument.summary || "No summary available."}
@@ -288,15 +290,15 @@ export default function AdminScreen() {
                 {/* DETAILS GRID */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
-                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">Type</span>
+                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">{t('table.col.type')}</span>
                     <span className="text-lg font-mono text-white capitalize">{selectedDocument.documentType}</span>
                   </div>
                   <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
-                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">Status</span>
-                    <span className="text-lg font-mono text-white capitalize">{selectedDocument.processingStatus}</span>
+                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">{t('table.col.status')}</span>
+                    <span className="text-lg font-mono text-white capitalize">{t(`status.${selectedDocument.processingStatus}`)}</span>
                   </div>
                   <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
-                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">Extracted Dates</span>
+                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">{t('details.dates')}</span>
                     <div className="flex flex-wrap gap-2 mt-1">
                       {selectedDocument.detectedFields?.dates?.length > 0 ? (
                         selectedDocument.detectedFields.dates.map((date, i) => (
@@ -306,7 +308,7 @@ export default function AdminScreen() {
                     </div>
                   </div>
                   <div className="bg-gray-800/30 p-4 rounded-lg border border-gray-800">
-                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">Extracted Amounts</span>
+                    <span className="text-xs font-bold text-gray-500 uppercase block mb-1">{t('details.amounts')}</span>
                     <div className="flex flex-wrap gap-2 mt-1">
                       {selectedDocument.detectedFields?.amounts?.length > 0 ? (
                         selectedDocument.detectedFields.amounts.map((amt, i) => (
@@ -319,7 +321,7 @@ export default function AdminScreen() {
 
                 {/* RAW DATA */}
                 <div className="mt-8">
-                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Raw Extracted Data</h3>
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">{t('details.raw')}</h3>
                   <pre className="bg-black/50 p-4 rounded-lg text-xs font-mono text-gray-500 overflow-x-auto border border-gray-800">
                     {JSON.stringify(selectedDocument, null, 2)}
                   </pre>
@@ -327,7 +329,7 @@ export default function AdminScreen() {
               </div>
 
               <div className="p-6 border-t border-gray-800 bg-gray-900/95 flex justify-end">
-                <Button onClick={() => setSelectedDocument(null)}>Close</Button>
+                <Button onClick={() => setSelectedDocument(null)}>{t('details.close')}</Button>
               </div>
             </>
           )}
@@ -343,15 +345,15 @@ export default function AdminScreen() {
             await apiRequest('POST', '/api/documents/bulk-delete', { ids: Array.from(selectedDocumentIds) });
             setSelectedDocumentIds(new Set());
             queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
-            toast.success(`${selectedDocumentIds.size} documents deleted`);
+            toast.success(t('toast.delete_bulk_success', { count: selectedDocumentIds.size }));
           } catch (e) {
             console.error(e);
-            toast.error("Failed to delete documents");
+            toast.error(t('toast.delete_error'));
           }
         }}
-        title="Delete Multiple Documents"
-        description={`Are you sure you want to delete ${selectedDocumentIds.size} documents? This action cannot be undone.`}
-        confirmText="Delete All"
+        title={t('confirm.delete_bulk_title')}
+        description={t('confirm.delete_bulk_desc', { count: selectedDocumentIds.size })}
+        confirmText={t('action.delete')}
         isDestructive
       />
 
@@ -366,15 +368,15 @@ export default function AdminScreen() {
           try {
             await apiRequest('DELETE', `/api/documents/${documentToDelete}`);
             queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
-            toast.success("Document deleted");
+            toast.success(t('toast.delete_success'));
           } catch (e) {
             console.error(e);
-            toast.error("Failed to delete document");
+            toast.error(t('toast.delete_error'));
           }
         }}
-        title="Delete Document"
-        description="Are you sure you want to delete this document? This action cannot be undone."
-        confirmText="Delete"
+        title={t('confirm.delete_title')}
+        description={t('confirm.delete_desc')}
+        confirmText={t('action.delete')}
         isDestructive
       />
     </Layout>
