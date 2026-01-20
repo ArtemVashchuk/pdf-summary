@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2, FileUp, FileText, ChevronLeft, ChevronRight, Eye, Loader2, X, CheckCircle, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/utils";
 import { Layout } from "@/components/layout";
@@ -50,7 +51,6 @@ export default function AdminScreen() {
   });
 
   const documents = documentsData?.data || [];
-  const total = documentsData?.total || 0;
 
   // Render Loading
   if (isLoading && !documentsData) {
@@ -88,18 +88,15 @@ export default function AdminScreen() {
                 files.forEach(file => formData.append('files', file));
 
                 try {
-                  const res = await fetch('/api/documents/upload', {
-                    method: 'POST',
-                    body: formData
-                  });
+                  const res = await apiRequest('POST', '/api/documents/upload', formData);
                   const data = await res.json();
                   if (data.success) {
                     queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
-                    // Optionally show toast
+                    toast.success("Documents uploaded successfully");
                   }
                 } catch (error) {
                   console.error('Upload failed:', error);
-                  alert('Upload failed');
+                  toast.error('Upload failed');
                 }
                 e.target.value = '';
               }}
@@ -125,14 +122,14 @@ export default function AdminScreen() {
                 onClick={async () => {
                   if (confirm(`Delete ${selectedDocumentIds.size} documents?`)) {
                     try {
-                      await fetch('/api/documents/bulk-delete', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ids: Array.from(selectedDocumentIds) })
-                      });
+                      await apiRequest('POST', '/api/documents/bulk-delete', { ids: Array.from(selectedDocumentIds) });
                       setSelectedDocumentIds(new Set());
                       queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
-                    } catch (e) { console.error(e); }
+                      toast.success(`${selectedDocumentIds.size} documents deleted`);
+                    } catch (e) {
+                      console.error(e);
+                      toast.error("Failed to delete documents");
+                    }
                   }
                 }}
               >
@@ -231,9 +228,13 @@ export default function AdminScreen() {
                           onClick={async () => {
                             if (confirm('Delete this document?')) {
                               try {
-                                await fetch(`/api/documents/${doc.id}`, { method: 'DELETE' });
+                                await apiRequest('DELETE', `/api/documents/${doc.id}`);
                                 queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
-                              } catch (e) { console.error(e); }
+                                toast.success("Document deleted");
+                              } catch (e) {
+                                console.error(e);
+                                toast.error("Failed to delete document");
+                              }
                             }
                           }}
                         >
