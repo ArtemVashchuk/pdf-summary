@@ -1,13 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type Language = 'en' | 'uk' | 'de' | 'es';
+export type Language = 'en' | 'uk';
 
 export const languages: { code: Language; name: string; flag: string }[] = [
     { code: 'en', name: 'English', flag: '🇬🇧' },
     { code: 'uk', name: 'Українська', flag: '🇺🇦' },
-    { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
-    { code: 'es', name: 'Español', flag: '🇪🇸' },
 ];
 
 const translations: Record<Language, Record<string, string>> = {
@@ -18,14 +16,6 @@ const translations: Record<Language, Record<string, string>> = {
     uk: {
         'user.name': 'Адміністратор',
         'user.role': 'Суперкористувач',
-    },
-    de: {
-        'user.name': 'Admin-System',
-        'user.role': 'Superuser',
-    },
-    es: {
-        'user.name': 'Sistema Admin',
-        'user.role': 'Superusuario',
     },
 };
 
