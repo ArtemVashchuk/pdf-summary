@@ -14,8 +14,10 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
+    "types": [
+      "node"
+    ],
     "outDir": "dist",
-    "rootDir": "src",
     "baseUrl": ".",
     "paths": {
       "@shared/*": [
@@ -24,7 +26,8 @@
     }
   },
   "include": [
-    "src/**/*"
+    "src/**/*",
+    "drizzle.config.ts"
   ],
   "exclude": [
     "node_modules",
