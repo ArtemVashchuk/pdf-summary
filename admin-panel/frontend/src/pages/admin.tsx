@@ -186,8 +186,8 @@ export default function AdminScreen() {
                       <td className="p-4 truncate max-w-[200px]" title={doc.fileName}>{doc.fileName}</td>
                       <td className="p-4 uppercase text-xs font-mono">{doc.fileType?.split('/')[1] || doc.fileType}</td>
                       <td className="p-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${doc.documentType === 'unknown' ? 'bg-gray-800 text-gray-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                          {doc.documentType || t('status.pending')}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${(!doc.documentType || doc.documentType === 'unknown') ? 'bg-gray-800 text-gray-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                          {doc.documentType && doc.documentType !== 'unknown' ? doc.documentType : '-'}
                         </span>
                       </td>
                       <td className="p-4">

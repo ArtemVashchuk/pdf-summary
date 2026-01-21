@@ -15,8 +15,9 @@ function log(msg: string) {
 
 export class DocumentProcessingService {
     private static instance: DocumentProcessingService;
-    private isProcessing: boolean = false;
-    private currentlyProcessingId: string | null = null;
+    private activeCount: number = 0;
+    private readonly MAX_CONCURRENT = 3;
+    private currentlyProcessingIds: Set<string> = new Set();
     private jobQueue: { documentId: string; filePath: string; mimeType: string }[] = [];
     private readonly MAX_ATTEMPTS = 3;
     private readonly RECOVERY_INTERVAL = 30000; // 30 seconds
@@ -40,7 +41,7 @@ export class DocumentProcessingService {
                 const pending = await documentsRepository.getPendingDocuments(this.MAX_ATTEMPTS);
                 for (const doc of pending) {
                     // Only queue if not already in queue AND not currently being processed
-                    if (!this.jobQueue.some(job => job.documentId === doc.id) && this.currentlyProcessingId !== doc.id) {
+                    if (!this.jobQueue.some(job => job.documentId === doc.id) && !this.currentlyProcessingIds.has(doc.id)) {
                         log(`Recovering stuck/pending document: ${doc.id} (${doc.fileName})`);
                         // Guess mimeType from fileType extension if possible, or use a default
                         const mimeType = doc.fileType === 'pdf' ? 'application/pdf' : `image/${doc.fileType}`;
@@ -55,7 +56,7 @@ export class DocumentProcessingService {
 
     public async queueDocument(documentId: string, filePath: string, mimeType: string) {
         // Prevent duplicate queueing
-        if (this.jobQueue.some(job => job.documentId === documentId) || this.currentlyProcessingId === documentId) return;
+        if (this.jobQueue.some(job => job.documentId === documentId) || this.currentlyProcessingIds.has(documentId)) return;
 
         log(`Queueing document ${documentId} for processing`);
         this.jobQueue.push({ documentId, filePath, mimeType });
@@ -63,43 +64,53 @@ export class DocumentProcessingService {
     }
 
     private async processQueue() {
-        if (this.isProcessing || this.jobQueue.length === 0) return;
+        if (this.activeCount >= this.MAX_CONCURRENT || this.jobQueue.length === 0) return;
 
-        this.isProcessing = true;
         const job = this.jobQueue.shift();
+        if (!job) return;
 
-        if (job) {
-            this.currentlyProcessingId = job.documentId;
-            try {
-                await this.processDocument(job.documentId, job.filePath, job.mimeType);
-            } catch (error: any) {
-                log(`Critical failure processing document ${job.documentId}: ${error.message}`);
+        this.activeCount++;
+        this.currentlyProcessingIds.add(job.documentId);
 
-                // Get current attempt count
-                const doc = await documentsRepository.getDocumentById(job.documentId);
-                const currentAttempts = doc?.attempts || 0;
+        // Process in background without awaiting here to allow parallelism
+        this.runJob(job).finally(() => {
+            this.activeCount--;
+            this.currentlyProcessingIds.delete(job.documentId);
+            // Immediately check for next job
+            this.processQueue();
+        });
 
-                const isFileNotFound = error.code === 'FILE_NOT_FOUND' || error.message?.includes('FileNotFound');
+        // If we have more slots and more jobs, try to launch another one
+        if (this.activeCount < this.MAX_CONCURRENT && this.jobQueue.length > 0) {
+            this.processQueue();
+        }
+    }
 
-                if (currentAttempts < this.MAX_ATTEMPTS && !isFileNotFound) {
-                    log(`Retrying document ${job.documentId} later (attempt ${currentAttempts + 1}/${this.MAX_ATTEMPTS})`);
-                    await documentsRepository.updateDocument(job.documentId, {
-                        processingStatus: "pending",
-                        errorMessage: `Attempt ${currentAttempts + 1} failed: ${error.message}`
-                    });
-                } else {
-                    const reason = isFileNotFound ? "File missing from server" : `Exceeded ${this.MAX_ATTEMPTS} attempts`;
-                    log(`Document ${job.documentId} failed permanently: ${reason}`);
-                    await documentsRepository.updateDocument(job.documentId, {
-                        processingStatus: "failed",
-                        errorMessage: `${reason}. Last error: ${error.message}`
-                    });
-                }
-            } finally {
-                this.isProcessing = false;
-                this.currentlyProcessingId = null;
-                // Add a small delay between processing to avoid overwhelming system
-                setTimeout(() => this.processQueue(), 1000);
+    private async runJob(job: { documentId: string; filePath: string; mimeType: string }) {
+        try {
+            await this.processDocument(job.documentId, job.filePath, job.mimeType);
+        } catch (error: any) {
+            log(`Critical failure processing document ${job.documentId}: ${error.message}`);
+
+            // Get current attempt count
+            const doc = await documentsRepository.getDocumentById(job.documentId);
+            const currentAttempts = doc?.attempts || 0;
+
+            const isFileNotFound = error.code === 'FILE_NOT_FOUND' || error.message?.includes('FileNotFound');
+
+            if (currentAttempts < this.MAX_ATTEMPTS && !isFileNotFound) {
+                log(`Retrying document ${job.documentId} later (attempt ${currentAttempts + 1}/${this.MAX_ATTEMPTS})`);
+                await documentsRepository.updateDocument(job.documentId, {
+                    processingStatus: "pending",
+                    errorMessage: `Attempt ${currentAttempts + 1} failed: ${error.message}`
+                });
+            } else {
+                const reason = isFileNotFound ? "File missing from server" : `Exceeded ${this.MAX_ATTEMPTS} attempts`;
+                log(`Document ${job.documentId} failed permanently: ${reason}`);
+                await documentsRepository.updateDocument(job.documentId, {
+                    processingStatus: "failed",
+                    errorMessage: `${reason}. Last error: ${error.message}`
+                });
             }
         }
     }
@@ -138,8 +149,8 @@ export class DocumentProcessingService {
             // Read file
             const fileBuffer = fs.readFileSync(absolutePath);
 
-            // Analyze with AI (reuses Gemini pipeline)
-            const analysis = await analyzeDocument(fileBuffer, mimeType);
+            // Analyze with AI (uses Gemini pipeline with File API support)
+            const analysis = await analyzeDocument(fileBuffer, mimeType, absolutePath);
 
             log(`Analysis complete for ${documentId}: type=${analysis.documentType}, confidence=${analysis.confidence}`);
 

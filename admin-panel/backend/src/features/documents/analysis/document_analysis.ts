@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import sharp from 'sharp';
 import fs from 'fs';
+import { GoogleAIFileManager } from "@google/generative-ai/server";
 
 const LOG_PATH = './logs/analysis.log';
 function log(msg: string) {
@@ -27,31 +28,56 @@ export interface DocumentAnalysisResult {
 }
 
 let genAI: GoogleGenerativeAI | null = null;
+let fileManager: any = null;
 
-function getGeminiClient(): GoogleGenerativeAI | null {
-    if (genAI) return genAI;
-
+function getGeminiClient(): { ai: GoogleGenerativeAI; fm: any } | null {
     const apiKey = process.env.GEMINI_API_KEY?.trim();
     if (!apiKey || apiKey === 'your_gemini_api_key_here') {
         log('GEMINI_API_KEY not found or is placeholder');
         return null;
     }
 
-    genAI = new GoogleGenerativeAI(apiKey);
-    return genAI;
+    if (!genAI) genAI = new GoogleGenerativeAI(apiKey);
+    if (!fileManager) fileManager = new GoogleAIFileManager(apiKey);
+
+    return { ai: genAI, fm: fileManager };
 }
 
 /**
  * Analyze a document (PDF or image) and extract structured information
- * Reuses the same Gemini AI integration as voucher imports
  */
-export async function analyzeDocument(fileBuffer: Buffer, mimeType: string): Promise<DocumentAnalysisResult> {
+export async function analyzeDocument(fileBuffer: Buffer, mimeType: string, filePath?: string): Promise<DocumentAnalysisResult> {
     const client = getGeminiClient();
     if (!client) {
         throw new Error("GEMINI_API_KEY_MISSING");
     }
 
-    log(`Starting document analysis (${mimeType}, ${(fileBuffer.length / 1024).toFixed(1)}KB)...`);
+    const { ai, fm } = client;
+    const isVeryLargeFile = fileBuffer.length > 5 * 1024 * 1024; // > 5MB
+    const isLargeFile = fileBuffer.length > 2 * 1024 * 1024; // > 2MB
+
+    // For very large PDFs (like books), extract text locally to avoid API limits
+    let extractedPdfText: string | null = null;
+    if (isVeryLargeFile && mimeType === 'application/pdf') {
+        try {
+            log(`Large PDF detected (${(fileBuffer.length / 1024 / 1024).toFixed(1)}MB). Extracting text locally...`);
+            // Lazy load pdf-parse
+            const pdfParse = require('pdf-parse');
+            const pdfData = await pdfParse(fileBuffer);
+            // Limit to first ~50000 chars (~20-30 pages worth of text)
+            const maxChars = 50000;
+            extractedPdfText = pdfData.text.substring(0, maxChars);
+            if (pdfData.text.length > maxChars) {
+                extractedPdfText += `\n\n[... Text truncated. Original document has ${pdfData.numpages} pages and ${pdfData.text.length} characters ...]`;
+            }
+            log(`Extracted ${extractedPdfText!.length} characters from ${pdfData.numpages} pages`);
+        } catch (e: any) {
+            log(`PDF text extraction failed: ${e.message}. Will try full file upload.`);
+        }
+    }
+
+    const strategy = extractedPdfText ? 'TextExtraction' : (isLargeFile ? 'FileAPI' : 'Base64');
+    log(`Starting document analysis (${mimeType}, ${(fileBuffer.length / 1024).toFixed(1)}KB, strategy=${strategy})...`);
 
     const prompt = `
 Analyze this document and extract key information.
@@ -84,44 +110,66 @@ Return ONLY valid JSON (no markdown, no code blocks):
 }
 `;
 
-    // Try models in order of preference (same as voucher imports)
-    // Try models in order of preference (optimized for speed and cost)
+    // Models prioritized by highest RPM limits from user's API dashboard:
+    // gemini-2.5-flash-lite: 10 RPM, gemini-2.5-flash: 5 RPM, gemini-1.5-flash: 15 RPM (if available)
     const modelsToTry = [
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-exp",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro"
+        "gemini-2.5-flash-lite",  // 10 RPM - highest for 2.5 series
+        "gemini-2.5-flash",       // 5 RPM 
+        "gemini-1.5-flash",       // 15 RPM on standard Free Tier
+        "gemini-1.5-pro"          // 2 RPM - fallback
     ];
 
     for (const modelName of modelsToTry) {
-        log(`Trying model: ${modelName}`);
+        try {
+            log(`Attempting analysis with ${modelName}...`);
+            const model = ai.getGenerativeModel({
+                model: modelName,
+                generationConfig: {
+                    temperature: 0.1,
+                }
+            });
 
-        let retryCount = 0;
-        const maxRetries = 3;
+            let content: any[] = [];
+            let useBase64Fallback = false;
 
-        while (retryCount <= maxRetries) {
-            try {
-                const model = client.getGenerativeModel({
-                    model: modelName,
-                    generationConfig: {
-                        temperature: 0.1, // Low temperature for consistent extraction
-                    }
-                });
+            // Strategy 1: Use extracted text for very large PDFs
+            if (extractedPdfText) {
+                log(`Using extracted text (${extractedPdfText.length} chars) for analysis...`);
+                content = [prompt + "\n\nDocument Text:\n" + extractedPdfText];
+            }
+            // Strategy 2: Use File API for large files
+            else if (isLargeFile && filePath) {
+                try {
+                    log(`Uploading to Gemini File API...`);
+                    const uploadResult = await fm.uploadFile(filePath, {
+                        mimeType,
+                        displayName: `doc_${Date.now()}`
+                    });
+                    log(`File uploaded: ${uploadResult.file.uri}`);
 
-                log(`Sending request to ${modelName} (Timeout: 120s)...`);
+                    content = [
+                        {
+                            fileData: {
+                                mimeType: uploadResult.file.mimeType,
+                                fileUri: uploadResult.file.uri
+                            }
+                        },
+                        prompt
+                    ];
+                } catch (uploadError: any) {
+                    log(`File API upload failed: ${uploadError.message}. Falling back to base64...`);
+                    useBase64Fallback = true;
+                }
+            }
 
+            if (!isLargeFile || useBase64Fallback) {
                 let inlineData: { mimeType: string; data: string };
-
-                // Handle different file types
                 if (mimeType === 'application/pdf') {
-                    // Send PDF directly
-                    log(`Encoding PDF (${(fileBuffer.length / 1024 / 1024).toFixed(2)}MB)...`);
                     inlineData = {
                         mimeType: 'application/pdf',
                         data: fileBuffer.toString('base64')
                     };
                 } else {
-                    // Convert image to JPEG for optimal processing
                     try {
                         const resized = await sharp(fileBuffer)
                             .resize({ width: 2000, withoutEnlargement: true })
@@ -138,64 +186,55 @@ Return ONLY valid JSON (no markdown, no code blocks):
                         };
                     }
                 }
-
-                const result = await model.generateContent([
-                    { inlineData },
-                    prompt
-                ], { timeout: 210000 }); // 3.5 minutes timeout for large files
-
-                const text = result.response.text();
-                log(`Raw Response (${modelName}): ${text.substring(0, 200)}...`);
-
-                // Parse JSON response
-                let jsonStr = text;
-                const jsonMatch = text.match(/\{[\s\S]*\}/);
-                if (jsonMatch) {
-                    jsonStr = jsonMatch[0];
-                }
-
-                const parsed = JSON.parse(jsonStr);
-
-                log(`Successfully analyzed document with ${modelName}`);
-
-                return {
-                    documentType: parsed.documentType || 'unknown',
-                    summary: parsed.summary || 'No summary available',
-                    extractedText: parsed.extractedText || '',
-                    detectedFields: {
-                        dates: Array.isArray(parsed.detectedFields?.dates) ? parsed.detectedFields.dates : [],
-                        names: Array.isArray(parsed.detectedFields?.names) ? parsed.detectedFields.names : [],
-                        organizations: Array.isArray(parsed.detectedFields?.organizations) ? parsed.detectedFields.organizations : [],
-                        amounts: Array.isArray(parsed.detectedFields?.amounts) ? parsed.detectedFields.amounts : [],
-                        references: Array.isArray(parsed.detectedFields?.references) ? parsed.detectedFields.references : [],
-                    },
-                    confidence: (parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low')
-                        ? parsed.confidence
-                        : 'medium',
-                    rawResponse: `AI_GEMINI_${modelName}`
-                };
-
-            } catch (error: any) {
-                const isRateLimit = error.message?.includes('429') ||
-                    error.message?.includes('quota') ||
-                    error.message?.includes('RESOURCE_EXHAUSTED') ||
-                    error.message?.includes('retry');
-
-                if (isRateLimit && retryCount < maxRetries) {
-                    log(`Error triggering retry: ${error.message}`);
-                    const waitTime = Math.min(20000 * Math.pow(2, retryCount), 60000);
-                    log(`Rate limit/Retry on ${modelName}. Retry ${retryCount + 1}/${maxRetries} after ${waitTime / 1000}s...`);
-                    await new Promise(resolve => setTimeout(resolve, waitTime));
-                    retryCount++;
-                    continue;
-                } else {
-                    log(`Model ${modelName} failed: ${error.message}`);
-                    break;
-                }
+                content = [{ inlineData }, prompt];
             }
+
+            const result = await model.generateContent(content, { timeout: 210000 });
+            const text = result.response.text();
+            log(`Raw Response (${modelName}): ${text.substring(0, 200)}...`);
+
+            // Parse JSON response
+            let jsonStr = text;
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                jsonStr = jsonMatch[0];
+            }
+
+            const parsed = JSON.parse(jsonStr);
+
+            log(`Successfully analyzed document with ${modelName}`);
+
+            return {
+                documentType: parsed.documentType || 'unknown',
+                summary: parsed.summary || 'No summary available',
+                extractedText: parsed.extractedText || '',
+                detectedFields: {
+                    dates: Array.isArray(parsed.detectedFields?.dates) ? parsed.detectedFields.dates : [],
+                    names: Array.isArray(parsed.detectedFields?.names) ? parsed.detectedFields.names : [],
+                    organizations: Array.isArray(parsed.detectedFields?.organizations) ? parsed.detectedFields.organizations : [],
+                    amounts: Array.isArray(parsed.detectedFields?.amounts) ? parsed.detectedFields.amounts : [],
+                    references: Array.isArray(parsed.detectedFields?.references) ? parsed.detectedFields.references : [],
+                },
+                confidence: (parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low')
+                    ? parsed.confidence
+                    : 'medium',
+                rawResponse: `AI_GEMINI_${modelName}`
+            };
+
+        } catch (error: any) {
+            const isRateLimit = error.message?.includes('429') || error.message?.includes('quota');
+            const isModelNotFound = error.message?.includes('404') || error.message?.includes('not found');
+
+            if (isRateLimit) {
+                log(`Rate limit hit for ${modelName}. Moving to next model.`);
+            } else if (isModelNotFound) {
+                log(`Model ${modelName} not available. Moving to next model.`);
+            } else {
+                log(`Error with ${modelName}: ${error.message}`);
+            }
+            // Continue to next model in loop
         }
     }
 
-    log("All models failed.");
-    throw new Error("Document analysis failed: All AI models exhausted");
+    throw new Error("All AI models failed to process the document. Potentially quota exceeded or service down.");
 }
