@@ -1,9 +1,9 @@
 # Stage 1: Build Frontend
 FROM node:22-slim AS frontend-builder
 WORKDIR /app/frontend
-COPY admin-panel/frontend/package.json .
+COPY frontend/package.json .
 RUN npm install
-COPY admin-panel/frontend .
+COPY frontend .
 # Set API URL to empty string for relative paths (same origin)
 ENV VITE_API_URL=""
 RUN npm run build
@@ -23,11 +23,11 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 # Copy backend package.json from root context
-COPY admin-panel/backend/package.json ./
+COPY backend/package.json ./
 RUN npm install
 
 # Copy backend source code
-COPY admin-panel/backend/ .
+COPY backend/ .
 RUN npm run build
 RUN mkdir -p uploads
 

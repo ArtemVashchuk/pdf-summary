@@ -22,7 +22,7 @@ services:
   admin-backend:
     build:
       context: .
-      dockerfile: admin-panel/backend/Dockerfile
+      dockerfile: backend/Dockerfile
     container_name: pdf-summary-backend
     restart: unless-stopped
     environment:
